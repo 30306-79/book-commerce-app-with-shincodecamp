@@ -1,0 +1,22 @@
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app
+├── .env
+├── .env.development.local
+├── .git/
+├── .gitignore
+├── .next/
+├── .vercel/
+├── app/
+├── eslint.config.mjs
+├── next-env.d.ts
+├── next.config.ts
+├── node_modules/
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── prisma/
+├── public/
+├── README.md
+└── tsconfig.json
+
+directory: 7 file: 11
+

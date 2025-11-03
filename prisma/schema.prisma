@@ -14,7 +14,7 @@ datasource db {
   // 6543（Pooler）or pgbouncer=true のURLを使う
   url       = env("POSTGRES_URL") // ← ランタイム用(プール)
   // 5432 の“非プール”URLを directUrl に
-  directUrl = env("POSTGRES_URL_NON_POOLING") // ← マイグレーション/Introspection用
+  //directUrl = env("POSTGRES_URL_NON_POOLING") // ← マイグレーション/Introspection用
   // shadowDatabaseUrl は書かない
 }
 
@@ -71,4 +71,6 @@ model Purchase {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId], name: "userId_bookId") // ★ 追加
 }

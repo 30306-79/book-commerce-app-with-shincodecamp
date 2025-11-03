@@ -1,0 +1,220 @@
+﻿
+
+===== FILE: app/api/checkout/route.ts =====
+
+// app/api/checkout/route.ts
+import { NextResponse } from "next/server";
+import Stripe from "stripe";
+
+export const runtime = "nodejs";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+
+export async function POST(req: Request) {
+  try {
+    const { title, price } = await req.json();
+    const amount = Number(price);
+    if (!title || !Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+
+    const origin = process.env.NEXT_PUBLIC_BASE_URL ?? new URL(req.url).origin;
+
+    // 笘・縺薙％縺ｧ蝙九ｒ譏守､ｺ
+    const params: Stripe.Checkout.SessionCreateParams = {
+      mode: "payment",
+      payment_method_types: ["card"], // 竊・縺薙％縺ｫ螟画峩
+      line_items: [
+        {
+          price_data: {
+            currency: "jpy",
+            product_data: { name: title },
+            unit_amount: Math.round(amount),
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${origin}/book/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: origin,
+    };
+    const session = await stripe.checkout.sessions.create(params);
+
+    return NextResponse.json({ url: session.url }, { status: 200 });
+  } catch (e: any) {
+    console.error("Stripe create error:", e);
+    return NextResponse.json(
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+
+===== FILE: app/api/checkout/success/route.ts =====
+
+import { NextResponse } from "next/server";
+import Stripe from "stripe";
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+//雉ｼ蜈･螻･豁ｴ縺ｮ菫晏ｭ・
+export async function POST(req: Request, res: Response) {
+  const { session_id } = await req.json();
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+
+    const exsistingPurchase = await prisma?.purchase.findFirst({
+      where: {
+        userId: session.client_reference_id!,
+        bookId: session.metadata?.bookId!,
+      },
+    });
+
+    if (!exsistingPurchase) {
+      const purchase = await prisma?.purchase.create({
+        data: {
+          userId: session.client_reference_id!,
+          bookId: session.metadata?.bookId!, //縺薙％縺ｫ譛ｬ縺ｮID繧貞・繧後ｋ
+        },
+      });
+      return NextResponse.json({ purchase });
+    } else {
+      return NextResponse.json({ message: "縺吶〒縺ｫ雉ｼ蜈･貂医∩縺ｧ縺・ });
+    }
+  } catch (e: any) {
+    return NextResponse.json(e);
+  }
+}
+
+
+===== FILE: app/lib/prisma.ts =====
+
+// app/lib/prisma.ts
+import { PrismaClient } from "@/app/generated/prisma";
+
+declare global {
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined;
+}
+
+const prisma =
+  globalThis.prisma ??
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === "development"
+        ? ["query", "error", "warn"]
+        : ["error"],
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prisma = prisma;
+}
+
+export default prisma;
+
+
+===== FILE: app/lib/next-auth/option.ts =====
+
+import { NextAuthOptions } from "next-auth";
+import GitHubProvider from "next-auth/providers/github";
+import { PrismaAdapter } from "@next-auth/prisma-adapter"; // v4諠ｳ螳・
+import prisma from "../prisma"; // 笘・app/lib/prisma.ts 繧呈欠縺・
+
+const { GITHUB_ID, GITHUB_SECRET } = process.env;
+if (!GITHUB_ID || !GITHUB_SECRET) {
+  throw new Error("Missing GITHUB_ID or GITHUB_SECRET");
+}
+
+export const nextAuthOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GitHubProvider({
+      clientId: GITHUB_ID,
+      clientSecret: GITHUB_SECRET,
+    }),
+  ],
+  session: { strategy: "database" },
+  callbacks: {
+    session: ({ session, user }) => ({
+      ...session,
+      user: { ...session.user, id: user.id },
+    }),
+  },
+};
+
+
+===== FILE: prisma/schema.prisma =====
+
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // 6543・・ooler・頴r pgbouncer=true 縺ｮURL繧剃ｽｿ縺・
+  url       = env("POSTGRES_URL") // 竊・繝ｩ繝ｳ繧ｿ繧､繝逕ｨ(繝励・繝ｫ)
+  // 5432 縺ｮ窶憺撼繝励・繝ｫ窶拔RL繧・directUrl 縺ｫ
+  directUrl = env("POSTGRES_URL_NON_POOLING") // 竊・繝槭う繧ｰ繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ/Introspection逕ｨ
+  // shadowDatabaseUrl 縺ｯ譖ｸ縺九↑縺・
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String?    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  purchases     Purchase[] // 竊・蟆乗枚蟄励↓縺励※縺翫￥縺ｨ諷｣萓狗噪縺ｫ笳・
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Purchase {
+  id        String   @id @default(cuid())
+  userId    String
+  bookId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+

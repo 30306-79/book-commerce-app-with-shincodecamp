@@ -1,0 +1,8 @@
+﻿
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app\prisma\migrations                                  
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app\prisma\schema.prisma                               
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app\prisma\migrations\20250928085421_init              
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app\prisma\migrations\migration_lock.toml              
+C:\Users\danbs\OneDrive\Desktop\dev\shincode_camp\book-commerce-app\prisma\migrations\20250928085421_init\migration.sql
+
+
