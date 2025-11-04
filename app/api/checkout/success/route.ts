@@ -1,4 +1,3 @@
-// app/api/checkout/success/route.ts
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import prisma from "@/app/lib/prisma";
@@ -17,10 +16,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Stripeセッションを取得
     const session = await stripe.checkout.sessions.retrieve(session_id);
 
-    // 決済完了のみ保存対象
+    // ★ 支払い完了のみ保存
     if (session.payment_status !== "paid") {
       return NextResponse.json(
         { ok: false, reason: "payment not paid" },
@@ -28,8 +26,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = session.client_reference_id ?? "";
-    const bookId = session.metadata?.bookId ?? "";
+    const userId = session.client_reference_id!;
+    const bookId = session.metadata?.bookId!;
     if (!userId || !bookId) {
       return NextResponse.json(
         { error: "missing userId/bookId" },
@@ -37,15 +35,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 二重購入ガード（複合ユニーク: userId+bookId）
+    // ★ 複合ユニークで“二重購入”を物理ガード
     const purchase = await prisma.purchase.upsert({
       where: { userId_bookId: { userId, bookId } },
-      update: {}, // 既存なら何も更新しない（idempotent）
+      update: {},
       create: { userId, bookId },
     });
 
-    // フロントでリンクを作れるように bookId も返す
-    return NextResponse.json({ ok: true, purchase, bookId }, { status: 200 });
+    return NextResponse.json({ ok: true, purchase }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "server error" },

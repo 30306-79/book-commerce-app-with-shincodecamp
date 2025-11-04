@@ -1,4 +1,3 @@
-// app/components/Book.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -9,8 +8,7 @@ import type { BookType } from "../types/types";
 
 export default function Book({ book }: { book: BookType }) {
   const [open, setOpen] = useState(false);
-  const [purchased, setPurchased] = useState(false); // 購入済みフラグ
-  const [buying, setBuying] = useState(false); // ★ 追加: 二度押し防止
+  const [purchased, setPurchased] = useState(false);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -21,13 +19,12 @@ export default function Book({ book }: { book: BookType }) {
   const priceText =
     typeof book.price === "number" ? `¥${book.price.toLocaleString()}` : "—";
 
-  // 価格が正しく設定されているか（購入可否）
   const canBuy =
     typeof book.price === "number" &&
     Number.isFinite(book.price) &&
     book.price > 0;
 
-  // 購入済み判定（ログイン状態に依存）
+  // 購入済み判定
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -44,7 +41,6 @@ export default function Book({ book }: { book: BookType }) {
     return () => {
       ignore = true;
     };
-    // session?.user が変わるたび確認
   }, [book.id, session?.user]);
 
   const startCheckout = async () => {
@@ -52,7 +48,6 @@ export default function Book({ book }: { book: BookType }) {
       await signIn("github");
       return;
     }
-
     const userId = (session?.user as any)?.id;
     const bookId = book.id;
     const title = book.title;
@@ -63,33 +58,16 @@ export default function Book({ book }: { book: BookType }) {
       return;
     }
 
-    try {
-      setBuying(true); // ★ 送信中ON
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, price, bookId, userId }),
-      });
-
-      if (res.status === 409) {
-        // ★ サーバー側の重複チェックにヒット
-        setPurchased(true);
-        alert("この本はすでに購入済みです。");
-        return;
-      }
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Checkout error");
-      if (data.url) window.location.href = data.url;
-    } catch (e) {
-      console.error(e);
-      alert("購入処理でエラーが発生しました。時間をおいて再度お試しください。");
-    } finally {
-      setBuying(false); // ★ 送信中OFF
-    }
+    const res = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, price, bookId, userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Checkout error");
+    if (data.url) window.location.href = data.url;
   };
 
-  // Escキーで閉じる
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -99,14 +77,12 @@ export default function Book({ book }: { book: BookType }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // 開いたらボタンにフォーカス
   useEffect(() => {
     if (open) closeBtnRef.current?.focus();
   }, [open]);
 
-  // 「購入する/読む」クリック時
   const handlePrimary = async () => {
-    if (status === "loading" || buying) return;
+    if (status === "loading") return;
 
     if (!session) {
       await signIn("github");
@@ -114,8 +90,7 @@ export default function Book({ book }: { book: BookType }) {
     }
 
     if (purchased) {
-      // 既に購入済み → 読む導線（必要に応じて詳細ページ等へ）
-      router.push(`/book/${book.id}`);
+      router.push(`/book/${book.id}`); // ← 読むページに遷移
       setOpen(false);
       return;
     }
@@ -131,7 +106,6 @@ export default function Book({ book }: { book: BookType }) {
 
   return (
     <>
-      {/* アニメーション */}
       <style jsx global>{`
         @keyframes fadeIn {
           from {
@@ -149,14 +123,12 @@ export default function Book({ book }: { book: BookType }) {
       `}</style>
 
       <div className="flex flex-col items-center m-4">
-        {/* クリックでモーダル表示 */}
         <div
           onClick={() => setOpen(true)}
           className="relative cursor-pointer shadow-2xl duration-300 hover:translate-y-1 hover:shadow-none rounded-md overflow-hidden"
           role="button"
           aria-label={`${book.title} を開く`}
         >
-          {/* 購入済みリボン */}
           {purchased && (
             <span className="absolute left-2 top-2 text-xs font-semibold bg-emerald-600 text-white px-2 py-1 rounded">
               購入済み
@@ -198,7 +170,6 @@ export default function Book({ book }: { book: BookType }) {
         </div>
       </div>
 
-      {/* ---- モーダル ---- */}
       {open && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex justify-center items-center"
@@ -234,31 +205,20 @@ export default function Book({ book }: { book: BookType }) {
                 className={`text-white font-semibold py-2 px-4 rounded ${
                   purchased
                     ? "bg-emerald-600 hover:bg-emerald-700"
-                    : !canBuy || status === "loading" || buying
+                    : !canBuy || status === "loading"
                     ? "bg-blue-300 cursor-not-allowed"
                     : "bg-blue-600 hover:bg-blue-700"
                 }`}
                 onClick={handlePrimary}
-                disabled={
-                  !purchased && (!canBuy || status === "loading" || buying)
-                }
-                aria-disabled={
-                  !purchased && (!canBuy || status === "loading" || buying)
-                }
+                disabled={!purchased && (!canBuy || status === "loading")}
+                aria-disabled={!purchased && (!canBuy || status === "loading")}
               >
-                {purchased
-                  ? "読む"
-                  : buying
-                  ? "処理中..."
-                  : canBuy
-                  ? "購入する"
-                  : "販売準備中"}
+                {purchased ? "読む" : canBuy ? "購入する" : "販売準備中"}
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* ---- ここまで ---- */}
     </>
   );
 }

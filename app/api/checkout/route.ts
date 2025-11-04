@@ -1,7 +1,5 @@
-// app/api/checkout/route.ts
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import prisma from "@/app/lib/prisma"; // ★ 追加
 
 export const runtime = "nodejs";
 
@@ -21,22 +19,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    // ★ ここで購入済みを先に弾く（Stripe セッションを作らない）
-    const exists = await prisma.purchase.findUnique({
-      where: { userId_bookId: { userId, bookId } },
-      select: { id: true },
-    });
-    if (exists) {
-      return NextResponse.json({ error: "ALREADY_PURCHASED" }, { status: 409 });
-    }
-
     const origin = process.env.NEXT_PUBLIC_BASE_URL ?? new URL(req.url).origin;
 
     const params: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       payment_method_types: ["card"],
-      metadata: { bookId },
-      client_reference_id: userId,
+      metadata: { bookId }, // ← 本IDを保存
+      client_reference_id: userId, // ← ユーザーIDを保存
       line_items: [
         {
           price_data: {

@@ -1,4 +1,3 @@
-// app/api/purchases/has/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions as authOptions } from "@/app/lib/next-auth/option";
@@ -14,8 +13,6 @@ export async function GET(req: Request) {
   }
 
   const session = await getServerSession(authOptions);
-
-  // ★ ここを変更（直接 session.user.id を触らない）
   const userId = (session as any)?.user?.id as string | undefined;
   if (!userId) {
     return NextResponse.json({ purchased: false }, { status: 200 });

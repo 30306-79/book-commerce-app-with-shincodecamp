@@ -1,7 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
-import { PrismaAdapter } from "@next-auth/prisma-adapter"; // v4想定
-import prisma from "../prisma"; // ★ app/lib/prisma.ts を指す
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import prisma from "../prisma";
 
 const { GITHUB_ID, GITHUB_SECRET } = process.env;
 if (!GITHUB_ID || !GITHUB_SECRET) {
