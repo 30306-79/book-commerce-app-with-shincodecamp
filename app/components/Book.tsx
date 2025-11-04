@@ -1,14 +1,33 @@
+// app/components/Book.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, memo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSession, signIn } from "next-auth/react";
 import type { BookType } from "../types/types";
 
+// ----------------- Skeleton -----------------
+const CardSkeleton = memo(function CardSkeleton() {
+  return (
+    <div className="m-4 w-[450px]">
+      <div className="animate-pulse rounded-md overflow-hidden shadow">
+        <div className="h-[350px] bg-slate-200" />
+        <div className="bg-slate-100 p-4 space-y-3">
+          <div className="h-4 w-3/4 bg-slate-200 rounded" />
+          <div className="h-4 w-2/3 bg-slate-200 rounded" />
+          <div className="h-4 w-1/3 bg-slate-200 rounded" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function Book({ book }: { book: BookType }) {
   const [open, setOpen] = useState(false);
   const [purchased, setPurchased] = useState(false);
+  const [checking, setChecking] = useState(false); // 購入済みチェック中
+  const [checkedOnce, setCheckedOnce] = useState(false); // 一度でも判定済みか
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -24,36 +43,47 @@ export default function Book({ book }: { book: BookType }) {
     Number.isFinite(book.price) &&
     book.price > 0;
 
-  // 購入済み判定
+  const checkPurchased = useCallback(async () => {
+    try {
+      setChecking(true);
+      const res = await fetch(`/api/purchases/has?bookId=${book.id}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      setPurchased(Boolean(data?.purchased));
+      setCheckedOnce(true);
+    } catch {
+      setPurchased(false);
+      setCheckedOnce(true);
+    } finally {
+      setChecking(false);
+    }
+  }, [book.id]);
+
+  // セッション確定で判定
   useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/purchases/has?bookId=${book.id}`, {
-          cache: "no-store",
-        });
-        const data = await res.json();
-        if (!ignore) setPurchased(Boolean(data?.purchased));
-      } catch {
-        if (!ignore) setPurchased(false);
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
-  }, [book.id, session?.user]);
+    if (!session?.user) {
+      // 未ログインは「購入済みチェック不要」なので即確定扱いにする
+      setPurchased(false);
+      setCheckedOnce(true);
+      setChecking(false);
+      return;
+    }
+    // ログイン済みなら問い合わせ
+    checkPurchased();
+  }, [session?.user, checkPurchased]);
 
   const startCheckout = async () => {
     if (status === "unauthenticated") {
       await signIn("github");
       return;
     }
-    const userId = (session?.user as any)?.id;
-    const bookId = book.id;
+
     const title = book.title;
     const price = Number(book.price);
+    const bookId = book.id;
 
-    if (!userId || !bookId || !title || !Number.isFinite(price) || price <= 0) {
+    if (!bookId || !title || !Number.isFinite(price) || price <= 0) {
       alert("購入情報が不足しています");
       return;
     }
@@ -61,13 +91,26 @@ export default function Book({ book }: { book: BookType }) {
     const res = await fetch("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, price, bookId, userId }),
+      // userIdは送らない（サーバ側でセッションから取得）
+      body: JSON.stringify({ title, price, bookId }),
     });
+
+    if (res.status === 401) {
+      await signIn("github");
+      return;
+    }
+    if (res.status === 409) {
+      // 既購入: モーダルだけ「読む」に切り替え
+      setPurchased(true);
+      return;
+    }
+
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || "Checkout error");
     if (data.url) window.location.href = data.url;
   };
 
+  // Escキーで閉じる
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -90,7 +133,7 @@ export default function Book({ book }: { book: BookType }) {
     }
 
     if (purchased) {
-      router.push(`/book/${book.id}`); // ← 読むページに遷移
+      router.push(`/book/${book.id}`);
       setOpen(false);
       return;
     }
@@ -101,8 +144,18 @@ export default function Book({ book }: { book: BookType }) {
     }
 
     await startCheckout();
-    setOpen(false);
+    if (!purchased) setOpen(false);
   };
+
+  // ★ ここがポイント：
+  // 1) 未ログイン → 判定不要なので即描画
+  // 2) ログイン中 → 購入済みチェックが完了するまでカードは出さず Skeleton を返す
+  const shouldShowSkeleton =
+    status === "loading" || (session?.user && (!checkedOnce || checking));
+
+  if (shouldShowSkeleton) {
+    return <CardSkeleton />;
+  }
 
   return (
     <>
@@ -129,7 +182,7 @@ export default function Book({ book }: { book: BookType }) {
           role="button"
           aria-label={`${book.title} を開く`}
         >
-          {purchased && (
+          {session?.user && purchased && (
             <span className="absolute left-2 top-2 text-xs font-semibold bg-emerald-600 text-white px-2 py-1 rounded">
               購入済み
             </span>
@@ -160,7 +213,7 @@ export default function Book({ book }: { book: BookType }) {
                   販売準備中
                 </span>
               )}
-              {purchased && (
+              {session?.user && purchased && (
                 <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
                   購入済み
                 </span>
